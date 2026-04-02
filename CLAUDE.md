@@ -35,8 +35,22 @@ domain:example.ru   # domain: явно
 regex:^.*\.ru$      # regex: регулярное выражение
 ```
 
+## CLI — проверка записей
+
+```bash
+go run . check oneme.ru vk.com           # проверка доменов
+go run . check 2.63.1.1                  # проверка IP
+go run . check oneme.ru 2.63.1.1         # микс — авто-определение domain/IP
+```
+
+- Декодирует .dat файлы (hand-rolled protobuf decoder)
+- Матчинг по семантике v2ray: domain: (поддомены), full: (точное), regex:, keyword:
+- Домены: O(1) map lookup + hierarchy walk по поддоменам
+- IP: проверка вхождения в CIDR через net.IPNet.Contains()
+- Exit code: 0 если все найдены, 1 если есть промахи
+
 ## Технические детали
 
-- Go 1.26, zero dependencies
-- Protobuf-кодирование hand-rolled (формат v2ray-core GeoSite/GeoIP)
+- Go 1.23+, zero dependencies
+- Protobuf encoding/decoding hand-rolled (формат v2ray-core GeoSite/GeoIP)
 - Дедупликация доменов и CIDR при мерже источников

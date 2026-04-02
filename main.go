@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 )
@@ -44,6 +45,18 @@ var cidrFiles = []string{
 }
 
 func main() {
+	if len(os.Args) > 1 && os.Args[1] == "check" {
+		runCheck(os.Args[2:])
+		return
+	}
+	runBuild()
+}
+
+// =============================================================================
+// BUILD
+// =============================================================================
+
+func runBuild() {
 	os.MkdirAll("data", 0755)
 
 	for _, src := range upstreamSources {
@@ -91,12 +104,312 @@ func main() {
 	}
 	fmt.Printf("whiteips.dat: %d CIDRs, %d bytes\n", len(cidrs), len(geoipDat))
 
-	// SHA256 checksums
 	writeChecksum("whitedomains.dat", geositeDat)
 	writeChecksum("whiteips.dat", geoipDat)
 }
 
-// --- download ---
+// =============================================================================
+// CHECK — decode .dat files and match queries using v2ray semantics
+// =============================================================================
+
+func runCheck(args []string) {
+	if len(args) == 0 {
+		fmt.Fprintln(os.Stderr, "usage: whitelists check <domain|ip> [...]")
+		os.Exit(1)
+	}
+
+	var domainQueries, ipQueries []string
+	for _, a := range args {
+		if net.ParseIP(a) != nil {
+			ipQueries = append(ipQueries, a)
+		} else {
+			domainQueries = append(domainQueries, a)
+		}
+	}
+
+	allFound := true
+
+	if len(domainQueries) > 0 {
+		entries, err := decodeDomains("whitedomains.dat")
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "error: %v\n", err)
+			os.Exit(2)
+		}
+		m := buildDomainMatcher(entries)
+		for _, q := range domainQueries {
+			if !m.match(q) {
+				allFound = false
+			}
+		}
+	}
+
+	if len(ipQueries) > 0 {
+		nets, err := decodeCIDRNets("whiteips.dat")
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "error: %v\n", err)
+			os.Exit(2)
+		}
+		for _, q := range ipQueries {
+			if !matchIP(q, nets) {
+				allFound = false
+			}
+		}
+	}
+
+	if !allFound {
+		os.Exit(1)
+	}
+}
+
+// --- domain matcher: O(1) map lookups + hierarchy walk ---
+
+type domainMatcher struct {
+	full    map[string]string // lowercase → original value
+	domain  map[string]string
+	regex   []*regexp.Regexp
+	regexSrc []string
+	keyword []string
+}
+
+func buildDomainMatcher(entries []domainEntry) *domainMatcher {
+	m := &domainMatcher{
+		full:   make(map[string]string, len(entries)),
+		domain: make(map[string]string, len(entries)),
+	}
+	for _, e := range entries {
+		low := strings.ToLower(e.value)
+		switch e.typ {
+		case domainTypeFull:
+			m.full[low] = e.value
+		case domainTypeDomain:
+			m.domain[low] = e.value
+		case domainTypeRegex:
+			if re, err := regexp.Compile(e.value); err == nil {
+				m.regex = append(m.regex, re)
+				m.regexSrc = append(m.regexSrc, e.value)
+			}
+		case domainTypePlain:
+			m.keyword = append(m.keyword, e.value)
+		}
+	}
+	return m
+}
+
+func (m *domainMatcher) match(query string) bool {
+	q := strings.ToLower(query)
+
+	// 1. Exact match
+	if v, ok := m.full[q]; ok {
+		fmt.Printf("FOUND  %s  (full:%s)\n", query, v)
+		return true
+	}
+
+	// 2. Domain hierarchy walk: sub.example.ru → example.ru → ru
+	for i := 0; i < len(q); i++ {
+		if i == 0 || q[i-1] == '.' {
+			candidate := q[i:]
+			if v, ok := m.domain[candidate]; ok {
+				if i == 0 {
+					fmt.Printf("FOUND  %s  (domain:%s)\n", query, v)
+				} else {
+					fmt.Printf("FOUND  %s  (domain:%s, subdomain)\n", query, v)
+				}
+				return true
+			}
+		}
+	}
+
+	// 3. Regex (rare, pre-compiled)
+	for i, re := range m.regex {
+		if re.MatchString(q) {
+			fmt.Printf("FOUND  %s  (regex:%s)\n", query, m.regexSrc[i])
+			return true
+		}
+	}
+
+	// 4. Keyword substring
+	for _, kw := range m.keyword {
+		if strings.Contains(q, strings.ToLower(kw)) {
+			fmt.Printf("FOUND  %s  (keyword:%s)\n", query, kw)
+			return true
+		}
+	}
+
+	fmt.Printf("MISS   %s\n", query)
+	return false
+}
+
+// --- IP matcher ---
+
+type cidrNet struct {
+	net    *net.IPNet
+	prefix int
+}
+
+func matchIP(query string, nets []cidrNet) bool {
+	ip := net.ParseIP(query)
+	if ip == nil {
+		fmt.Fprintf(os.Stderr, "invalid IP: %s\n", query)
+		return false
+	}
+	for _, cn := range nets {
+		if cn.net.Contains(ip) {
+			fmt.Printf("FOUND  %s  (%s)\n", query, cn.net)
+			return true
+		}
+	}
+	fmt.Printf("MISS   %s\n", query)
+	return false
+}
+
+// =============================================================================
+// PROTOBUF DECODER — hand-rolled, mirrors the encoder
+// =============================================================================
+
+func pbReadVarint(buf []byte, pos int) (uint64, int) {
+	var v uint64
+	var shift uint
+	for pos < len(buf) {
+		b := buf[pos]
+		pos++
+		v |= uint64(b&0x7f) << shift
+		if b < 0x80 {
+			return v, pos
+		}
+		shift += 7
+	}
+	return v, pos
+}
+
+func pbReadBytes(buf []byte, pos int) ([]byte, int) {
+	length, pos := pbReadVarint(buf, pos)
+	end := pos + int(length)
+	return buf[pos:end], end
+}
+
+func pbSkip(buf []byte, pos int, wireType int) int {
+	switch wireType {
+	case 0: // varint
+		_, pos = pbReadVarint(buf, pos)
+	case 2: // length-delimited
+		_, pos = pbReadBytes(buf, pos)
+	case 1: // 64-bit fixed
+		pos += 8
+	case 5: // 32-bit fixed
+		pos += 4
+	}
+	return pos
+}
+
+// pbIterBytes iterates over length-delimited fields matching targetField.
+func pbIterBytes(buf []byte, targetField int, fn func([]byte)) {
+	pos := 0
+	for pos < len(buf) {
+		tag, newPos := pbReadVarint(buf, pos)
+		pos = newPos
+		fieldNum := int(tag >> 3)
+		wireType := int(tag & 7)
+		if fieldNum == targetField && wireType == 2 {
+			data, newPos := pbReadBytes(buf, pos)
+			pos = newPos
+			fn(data)
+		} else {
+			pos = pbSkip(buf, pos, wireType)
+		}
+	}
+}
+
+func decodeDomains(path string) ([]domainEntry, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	var entries []domainEntry
+	// GeoSiteList → field 1 repeated GeoSite
+	pbIterBytes(data, 1, func(geosite []byte) {
+		// GeoSite → field 2 repeated Domain
+		pbIterBytes(geosite, 2, func(domain []byte) {
+			typ, value := decodeDomainMsg(domain)
+			if value != "" {
+				entries = append(entries, domainEntry{typ: typ, value: value})
+			}
+		})
+	})
+	return entries, nil
+}
+
+func decodeDomainMsg(buf []byte) (typ int, value string) {
+	pos := 0
+	for pos < len(buf) {
+		tag, newPos := pbReadVarint(buf, pos)
+		pos = newPos
+		fieldNum := int(tag >> 3)
+		wireType := int(tag & 7)
+		switch {
+		case fieldNum == 1 && wireType == 0: // type enum
+			v, np := pbReadVarint(buf, pos)
+			typ = int(v)
+			pos = np
+		case fieldNum == 2 && wireType == 2: // value string
+			vb, np := pbReadBytes(buf, pos)
+			value = string(vb)
+			pos = np
+		default:
+			pos = pbSkip(buf, pos, wireType)
+		}
+	}
+	return
+}
+
+func decodeCIDRNets(path string) ([]cidrNet, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	var nets []cidrNet
+	// GeoIPList → field 1 repeated GeoIP
+	pbIterBytes(data, 1, func(geoip []byte) {
+		// GeoIP → field 2 repeated CIDR
+		pbIterBytes(geoip, 2, func(cidr []byte) {
+			ip, prefix := decodeCIDRMsg(cidr)
+			if ip != nil {
+				bits := len(ip) * 8
+				nets = append(nets, cidrNet{
+					net:    &net.IPNet{IP: ip, Mask: net.CIDRMask(int(prefix), bits)},
+					prefix: int(prefix),
+				})
+			}
+		})
+	})
+	return nets, nil
+}
+
+func decodeCIDRMsg(buf []byte) (ip []byte, prefix uint32) {
+	pos := 0
+	for pos < len(buf) {
+		tag, newPos := pbReadVarint(buf, pos)
+		pos = newPos
+		fieldNum := int(tag >> 3)
+		wireType := int(tag & 7)
+		switch {
+		case fieldNum == 1 && wireType == 2: // ip bytes
+			vb, np := pbReadBytes(buf, pos)
+			ip = vb
+			pos = np
+		case fieldNum == 2 && wireType == 0: // prefix varint
+			v, np := pbReadVarint(buf, pos)
+			prefix = uint32(v)
+			pos = np
+		default:
+			pos = pbSkip(buf, pos, wireType)
+		}
+	}
+	return
+}
+
+// =============================================================================
+// BUILD HELPERS — download, parse, merge
+// =============================================================================
 
 var httpClient = &http.Client{Timeout: 30 * time.Second}
 
@@ -129,8 +442,6 @@ func download(url, dest string) error {
 	return os.Rename(tmp, dest)
 }
 
-// --- line reading ---
-
 func readLines(path string) ([]string, error) {
 	f, err := os.Open(path)
 	if err != nil {
@@ -149,8 +460,6 @@ func readLines(path string) ([]string, error) {
 	}
 	return lines, scanner.Err()
 }
-
-// --- domain parsing ---
 
 type domainEntry struct {
 	typ   int
@@ -203,10 +512,8 @@ func parseDomainLine(line string) (domainEntry, error) {
 	return domainEntry{typ: domainTypeDomain, value: line}, nil
 }
 
-// --- CIDR parsing ---
-
 type cidrEntry struct {
-	ip     []byte // 4 bytes IPv4, 16 bytes IPv6
+	ip     []byte
 	prefix uint32
 }
 
@@ -241,8 +548,6 @@ func mergeCIDRs(files []string) ([]cidrEntry, error) {
 	return result, nil
 }
 
-// --- SHA256 checksum ---
-
 func writeChecksum(path string, data []byte) {
 	hash := sha256.Sum256(data)
 	line := fmt.Sprintf("%x  %s\n", hash, path)
@@ -251,8 +556,9 @@ func writeChecksum(path string, data []byte) {
 	}
 }
 
-// --- protobuf encoding ---
-// Schema: v2ray-core app/router/routercommon/common.proto
+// =============================================================================
+// PROTOBUF ENCODER
+// =============================================================================
 
 func encodeDomain(typ int, value string) []byte {
 	var b []byte
@@ -272,7 +578,6 @@ func encodeCIDR(ip []byte, prefix uint32) []byte {
 	return b
 }
 
-// encodeTagged encodes a GeoSite or GeoIP message: tag (field 1) + repeated entries (field 2).
 func encodeTagged(tag string, entries [][]byte) []byte {
 	var b []byte
 	b = appendStringField(b, 1, tag)
@@ -282,7 +587,6 @@ func encodeTagged(tag string, entries [][]byte) []byte {
 	return b
 }
 
-// encodeRepeated encodes a GeoSiteList or GeoIPList: repeated messages (field 1).
 func encodeRepeated(items [][]byte) []byte {
 	var b []byte
 	for _, item := range items {
@@ -290,8 +594,6 @@ func encodeRepeated(items [][]byte) []byte {
 	}
 	return b
 }
-
-// --- low-level protobuf wire helpers ---
 
 func appendVarint(b []byte, v uint64) []byte {
 	for v >= 0x80 {
