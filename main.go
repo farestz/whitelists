@@ -14,6 +14,11 @@ import (
 	"time"
 )
 
+const (
+	domainDatFile = "whitedomains.dat"
+	ipDatFile     = "whiteips.dat"
+)
+
 // Domain type enum — matches v2ray-core app/router/config.proto
 const (
 	domainTypePlain  = 0
@@ -79,7 +84,7 @@ func runBuild() {
 	}
 	geositeDat := encodeRepeated([][]byte{encodeTagged("DIRECT", encodedDomains)})
 
-	if err := os.WriteFile("whitedomains.dat", geositeDat, 0644); err != nil {
+	if err := os.WriteFile(domainDatFile, geositeDat, 0644); err != nil {
 		fmt.Fprintf(os.Stderr, "write whitedomains.dat: %v\n", err)
 		os.Exit(1)
 	}
@@ -98,14 +103,14 @@ func runBuild() {
 	}
 	geoipDat := encodeRepeated([][]byte{encodeTagged("DIRECT", encodedCIDRs)})
 
-	if err := os.WriteFile("whiteips.dat", geoipDat, 0644); err != nil {
+	if err := os.WriteFile(ipDatFile, geoipDat, 0644); err != nil {
 		fmt.Fprintf(os.Stderr, "write whiteips.dat: %v\n", err)
 		os.Exit(1)
 	}
 	fmt.Printf("whiteips.dat: %d CIDRs, %d bytes\n", len(cidrs), len(geoipDat))
 
-	writeChecksum("whitedomains.dat", geositeDat)
-	writeChecksum("whiteips.dat", geoipDat)
+	writeChecksum(domainDatFile, geositeDat)
+	writeChecksum(ipDatFile, geoipDat)
 }
 
 // =============================================================================
@@ -130,7 +135,7 @@ func runCheck(args []string) {
 	allFound := true
 
 	if len(domainQueries) > 0 {
-		entries, err := decodeDomains("whitedomains.dat")
+		entries, err := decodeDomains(domainDatFile)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "error: %v\n", err)
 			os.Exit(2)
@@ -144,13 +149,13 @@ func runCheck(args []string) {
 	}
 
 	if len(ipQueries) > 0 {
-		nets, err := decodeCIDRNets("whiteips.dat")
+		ipNets, err := decodeCIDRNets(ipDatFile)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "error: %v\n", err)
 			os.Exit(2)
 		}
 		for _, q := range ipQueries {
-			if !matchIP(q, nets) {
+			if !matchIP(q, ipNets) {
 				allFound = false
 			}
 		}
@@ -163,18 +168,22 @@ func runCheck(args []string) {
 
 // --- domain matcher: O(1) map lookups + hierarchy walk ---
 
+type regexRule struct {
+	re  *regexp.Regexp
+	src string
+}
+
 type domainMatcher struct {
 	full    map[string]string // lowercase → original value
 	domain  map[string]string
-	regex   []*regexp.Regexp
-	regexSrc []string
-	keyword []string
+	regex   []regexRule
+	keyword []string // pre-lowercased
 }
 
 func buildDomainMatcher(entries []domainEntry) *domainMatcher {
 	m := &domainMatcher{
-		full:   make(map[string]string, len(entries)),
-		domain: make(map[string]string, len(entries)),
+		full:   make(map[string]string),
+		domain: make(map[string]string),
 	}
 	for _, e := range entries {
 		low := strings.ToLower(e.value)
@@ -185,11 +194,10 @@ func buildDomainMatcher(entries []domainEntry) *domainMatcher {
 			m.domain[low] = e.value
 		case domainTypeRegex:
 			if re, err := regexp.Compile(e.value); err == nil {
-				m.regex = append(m.regex, re)
-				m.regexSrc = append(m.regexSrc, e.value)
+				m.regex = append(m.regex, regexRule{re, e.value})
 			}
 		case domainTypePlain:
-			m.keyword = append(m.keyword, e.value)
+			m.keyword = append(m.keyword, low)
 		}
 	}
 	return m
@@ -198,38 +206,37 @@ func buildDomainMatcher(entries []domainEntry) *domainMatcher {
 func (m *domainMatcher) match(query string) bool {
 	q := strings.ToLower(query)
 
-	// 1. Exact match
 	if v, ok := m.full[q]; ok {
 		fmt.Printf("FOUND  %s  (full:%s)\n", query, v)
 		return true
 	}
 
-	// 2. Domain hierarchy walk: sub.example.ru → example.ru → ru
-	for i := 0; i < len(q); i++ {
-		if i == 0 || q[i-1] == '.' {
-			candidate := q[i:]
-			if v, ok := m.domain[candidate]; ok {
-				if i == 0 {
-					fmt.Printf("FOUND  %s  (domain:%s)\n", query, v)
-				} else {
-					fmt.Printf("FOUND  %s  (domain:%s, subdomain)\n", query, v)
-				}
-				return true
+	// Domain hierarchy walk: sub.example.ru → example.ru → ru
+	for candidate := q; candidate != ""; {
+		if v, ok := m.domain[candidate]; ok {
+			if candidate == q {
+				fmt.Printf("FOUND  %s  (domain:%s)\n", query, v)
+			} else {
+				fmt.Printf("FOUND  %s  (domain:%s, subdomain)\n", query, v)
 			}
+			return true
 		}
+		dot := strings.IndexByte(candidate, '.')
+		if dot == -1 {
+			break
+		}
+		candidate = candidate[dot+1:]
 	}
 
-	// 3. Regex (rare, pre-compiled)
-	for i, re := range m.regex {
-		if re.MatchString(q) {
-			fmt.Printf("FOUND  %s  (regex:%s)\n", query, m.regexSrc[i])
+	for _, r := range m.regex {
+		if r.re.MatchString(q) {
+			fmt.Printf("FOUND  %s  (regex:%s)\n", query, r.src)
 			return true
 		}
 	}
 
-	// 4. Keyword substring
 	for _, kw := range m.keyword {
-		if strings.Contains(q, strings.ToLower(kw)) {
+		if strings.Contains(q, kw) {
 			fmt.Printf("FOUND  %s  (keyword:%s)\n", query, kw)
 			return true
 		}
@@ -241,20 +248,15 @@ func (m *domainMatcher) match(query string) bool {
 
 // --- IP matcher ---
 
-type cidrNet struct {
-	net    *net.IPNet
-	prefix int
-}
-
-func matchIP(query string, nets []cidrNet) bool {
+func matchIP(query string, nets []*net.IPNet) bool {
 	ip := net.ParseIP(query)
 	if ip == nil {
 		fmt.Fprintf(os.Stderr, "invalid IP: %s\n", query)
 		return false
 	}
-	for _, cn := range nets {
-		if cn.net.Contains(ip) {
-			fmt.Printf("FOUND  %s  (%s)\n", query, cn.net)
+	for _, n := range nets {
+		if n.Contains(ip) {
+			fmt.Printf("FOUND  %s  (%s)\n", query, n)
 			return true
 		}
 	}
@@ -361,22 +363,19 @@ func decodeDomainMsg(buf []byte) (typ int, value string) {
 	return
 }
 
-func decodeCIDRNets(path string) ([]cidrNet, error) {
+func decodeCIDRNets(path string) ([]*net.IPNet, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, err
 	}
-	var nets []cidrNet
-	// GeoIPList → field 1 repeated GeoIP
+	var nets []*net.IPNet
 	pbIterBytes(data, 1, func(geoip []byte) {
-		// GeoIP → field 2 repeated CIDR
 		pbIterBytes(geoip, 2, func(cidr []byte) {
 			ip, prefix := decodeCIDRMsg(cidr)
 			if ip != nil {
-				bits := len(ip) * 8
-				nets = append(nets, cidrNet{
-					net:    &net.IPNet{IP: ip, Mask: net.CIDRMask(int(prefix), bits)},
-					prefix: int(prefix),
+				nets = append(nets, &net.IPNet{
+					IP:   ip,
+					Mask: net.CIDRMask(int(prefix), len(ip)*8),
 				})
 			}
 		})
