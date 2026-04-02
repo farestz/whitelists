@@ -1,0 +1,3 @@
+# Custom CIDR additions for the IP whitelist
+# One CIDR per line, e.g.: 1.2.3.0/24
+# Lines starting with # are comments

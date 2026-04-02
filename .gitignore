@@ -1,0 +1,24 @@
+# Build artifacts
+whitedomains.dat
+whiteips.dat
+*.sha256sum
+
+# Downloaded upstream data
+data/
+
+# Go
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+
+# macOS
+.DS_Store
+._*
+.AppleDouble
+.LSOverride
+.Spotlight-V100
+.Trashes
