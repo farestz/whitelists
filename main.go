@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 )
 
 // Domain type enum — matches v2ray-core app/router/config.proto
@@ -20,33 +21,32 @@ const (
 	domainTypeFull   = 3
 )
 
-// Upstream source URLs
-var upstreamDomains = []struct {
+type upstream struct {
 	url  string
 	file string
-}{
-	{"https://raw.githubusercontent.com/artembolotov/custom-geosite/main/lists/direct.txt", "data/artembolotov-domains.txt"},
-	{"https://raw.githubusercontent.com/hxehex/russia-mobile-internet-whitelist/main/whitelist.txt", "data/hxehex-domains.txt"},
 }
 
-var upstreamCIDRs = []struct {
-	url  string
-	file string
-}{
+var upstreamSources = []upstream{
+	{"https://raw.githubusercontent.com/artembolotov/custom-geosite/main/lists/direct.txt", "data/artembolotov-domains.txt"},
+	{"https://raw.githubusercontent.com/hxehex/russia-mobile-internet-whitelist/main/whitelist.txt", "data/hxehex-domains.txt"},
 	{"https://raw.githubusercontent.com/hxehex/russia-mobile-internet-whitelist/main/cidrwhitelist.txt", "data/hxehex-cidrs.txt"},
+}
+
+var domainFiles = []string{
+	"data/artembolotov-domains.txt",
+	"data/hxehex-domains.txt",
+	"lists/domains-custom.txt",
+}
+
+var cidrFiles = []string{
+	"data/hxehex-cidrs.txt",
+	"lists/ips-custom.txt",
 }
 
 func main() {
 	os.MkdirAll("data", 0755)
 
-	// Download upstream sources
-	for _, src := range upstreamDomains {
-		if err := download(src.url, src.file); err != nil {
-			fmt.Fprintf(os.Stderr, "download %s: %v\n", src.url, err)
-			os.Exit(1)
-		}
-	}
-	for _, src := range upstreamCIDRs {
+	for _, src := range upstreamSources {
 		if err := download(src.url, src.file); err != nil {
 			fmt.Fprintf(os.Stderr, "download %s: %v\n", src.url, err)
 			os.Exit(1)
@@ -54,11 +54,6 @@ func main() {
 	}
 
 	// Build whitedomains.dat
-	domainFiles := []string{
-		"data/artembolotov-domains.txt",
-		"data/hxehex-domains.txt",
-		"lists/domains-custom.txt",
-	}
 	domains, err := mergeDomains(domainFiles)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "domains: %v\n", err)
@@ -69,8 +64,7 @@ func main() {
 	for _, e := range domains {
 		encodedDomains = append(encodedDomains, encodeDomain(e.typ, e.value))
 	}
-	geoSite := encodeGeoSite("DIRECT", encodedDomains)
-	geositeDat := encodeGeoSiteList([][]byte{geoSite})
+	geositeDat := encodeRepeated([][]byte{encodeTagged("DIRECT", encodedDomains)})
 
 	if err := os.WriteFile("whitedomains.dat", geositeDat, 0644); err != nil {
 		fmt.Fprintf(os.Stderr, "write whitedomains.dat: %v\n", err)
@@ -79,10 +73,6 @@ func main() {
 	fmt.Printf("whitedomains.dat: %d domains, %d bytes\n", len(domains), len(geositeDat))
 
 	// Build whiteips.dat
-	cidrFiles := []string{
-		"data/hxehex-cidrs.txt",
-		"lists/ips-custom.txt",
-	}
 	cidrs, err := mergeCIDRs(cidrFiles)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "cidrs: %v\n", err)
@@ -93,8 +83,7 @@ func main() {
 	for _, c := range cidrs {
 		encodedCIDRs = append(encodedCIDRs, encodeCIDR(c.ip, c.prefix))
 	}
-	geoIP := encodeGeoIP("DIRECT", encodedCIDRs)
-	geoipDat := encodeGeoIPList([][]byte{geoIP})
+	geoipDat := encodeRepeated([][]byte{encodeTagged("DIRECT", encodedCIDRs)})
 
 	if err := os.WriteFile("whiteips.dat", geoipDat, 0644); err != nil {
 		fmt.Fprintf(os.Stderr, "write whiteips.dat: %v\n", err)
@@ -103,17 +92,19 @@ func main() {
 	fmt.Printf("whiteips.dat: %d CIDRs, %d bytes\n", len(cidrs), len(geoipDat))
 
 	// SHA256 checksums
-	writeChecksum("whitedomains.dat")
-	writeChecksum("whiteips.dat")
+	writeChecksum("whitedomains.dat", geositeDat)
+	writeChecksum("whiteips.dat", geoipDat)
 }
 
 // --- download ---
+
+var httpClient = &http.Client{Timeout: 30 * time.Second}
 
 func download(url, dest string) error {
 	if err := os.MkdirAll(filepath.Dir(dest), 0755); err != nil {
 		return err
 	}
-	resp, err := http.Get(url)
+	resp, err := httpClient.Get(url)
 	if err != nil {
 		return err
 	}
@@ -121,13 +112,42 @@ func download(url, dest string) error {
 	if resp.StatusCode != 200 {
 		return fmt.Errorf("HTTP %d", resp.StatusCode)
 	}
-	f, err := os.Create(dest)
+	tmp := dest + ".tmp"
+	f, err := os.Create(tmp)
 	if err != nil {
 		return err
 	}
+	if _, err := io.Copy(f, resp.Body); err != nil {
+		f.Close()
+		os.Remove(tmp)
+		return err
+	}
+	if err := f.Close(); err != nil {
+		os.Remove(tmp)
+		return err
+	}
+	return os.Rename(tmp, dest)
+}
+
+// --- line reading ---
+
+func readLines(path string) ([]string, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
 	defer f.Close()
-	_, err = io.Copy(f, resp.Body)
-	return err
+
+	var lines []string
+	scanner := bufio.NewScanner(f)
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		lines = append(lines, line)
+	}
+	return lines, scanner.Err()
 }
 
 // --- domain parsing ---
@@ -142,11 +162,16 @@ func mergeDomains(files []string) ([]domainEntry, error) {
 	var result []domainEntry
 
 	for _, path := range files {
-		entries, err := readDomains(path)
+		lines, err := readLines(path)
 		if err != nil {
 			return nil, fmt.Errorf("%s: %w", path, err)
 		}
-		for _, e := range entries {
+		for _, line := range lines {
+			e, err := parseDomainLine(line)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "warning: %s: skipping %q: %v\n", path, line, err)
+				continue
+			}
 			key := fmt.Sprintf("%d:%s", e.typ, strings.ToLower(e.value))
 			if !seen[key] {
 				seen[key] = true
@@ -155,29 +180,6 @@ func mergeDomains(files []string) ([]domainEntry, error) {
 		}
 	}
 	return result, nil
-}
-
-func readDomains(path string) ([]domainEntry, error) {
-	f, err := os.Open(path)
-	if err != nil {
-		return nil, err
-	}
-	defer f.Close()
-
-	var entries []domainEntry
-	scanner := bufio.NewScanner(f)
-	for scanner.Scan() {
-		line := strings.TrimSpace(scanner.Text())
-		if line == "" || strings.HasPrefix(line, "#") {
-			continue
-		}
-		e, err := parseDomainLine(line)
-		if err != nil {
-			continue // skip malformed lines
-		}
-		entries = append(entries, e)
-	}
-	return entries, scanner.Err()
 }
 
 func parseDomainLine(line string) (domainEntry, error) {
@@ -213,12 +215,23 @@ func mergeCIDRs(files []string) ([]cidrEntry, error) {
 	var result []cidrEntry
 
 	for _, path := range files {
-		entries, err := readCIDRs(path)
+		lines, err := readLines(path)
 		if err != nil {
 			return nil, fmt.Errorf("%s: %w", path, err)
 		}
-		for _, e := range entries {
-			key := fmt.Sprintf("%v/%d", e.ip, e.prefix)
+		for _, line := range lines {
+			_, ipNet, err := net.ParseCIDR(line)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "warning: %s: skipping %q: %v\n", path, line, err)
+				continue
+			}
+			ip := ipNet.IP.To4()
+			if ip == nil {
+				ip = ipNet.IP.To16()
+			}
+			ones, _ := ipNet.Mask.Size()
+			e := cidrEntry{ip: ip, prefix: uint32(ones)}
+			key := string(e.ip) + "/" + line[strings.IndexByte(line, '/')+1:]
 			if !seen[key] {
 				seen[key] = true
 				result = append(result, e)
@@ -228,48 +241,18 @@ func mergeCIDRs(files []string) ([]cidrEntry, error) {
 	return result, nil
 }
 
-func readCIDRs(path string) ([]cidrEntry, error) {
-	f, err := os.Open(path)
-	if err != nil {
-		return nil, err
-	}
-	defer f.Close()
-
-	var entries []cidrEntry
-	scanner := bufio.NewScanner(f)
-	for scanner.Scan() {
-		line := strings.TrimSpace(scanner.Text())
-		if line == "" || strings.HasPrefix(line, "#") {
-			continue
-		}
-		_, ipNet, err := net.ParseCIDR(line)
-		if err != nil {
-			continue // skip malformed lines
-		}
-		ip := ipNet.IP.To4()
-		if ip == nil {
-			ip = ipNet.IP.To16()
-		}
-		ones, _ := ipNet.Mask.Size()
-		entries = append(entries, cidrEntry{ip: ip, prefix: uint32(ones)})
-	}
-	return entries, scanner.Err()
-}
-
 // --- SHA256 checksum ---
 
-func writeChecksum(path string) {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "checksum %s: %v\n", path, err)
-		return
-	}
+func writeChecksum(path string, data []byte) {
 	hash := sha256.Sum256(data)
 	line := fmt.Sprintf("%x  %s\n", hash, path)
-	os.WriteFile(path+".sha256sum", []byte(line), 0644)
+	if err := os.WriteFile(path+".sha256sum", []byte(line), 0644); err != nil {
+		fmt.Fprintf(os.Stderr, "checksum %s: %v\n", path, err)
+	}
 }
 
-// --- protobuf encoding (GeoSite) ---
+// --- protobuf encoding ---
+// Schema: v2ray-core app/router/routercommon/common.proto
 
 func encodeDomain(typ int, value string) []byte {
 	var b []byte
@@ -280,26 +263,6 @@ func encodeDomain(typ int, value string) []byte {
 	return b
 }
 
-func encodeGeoSite(tag string, domains [][]byte) []byte {
-	var b []byte
-	b = appendStringField(b, 1, tag)
-	for _, d := range domains {
-		b = appendBytesField(b, 2, d)
-	}
-	return b
-}
-
-func encodeGeoSiteList(geoSites [][]byte) []byte {
-	var b []byte
-	for _, gs := range geoSites {
-		b = appendBytesField(b, 1, gs)
-	}
-	return b
-}
-
-// --- protobuf encoding (GeoIP) ---
-// Schema: v2ray-core app/router/routercommon/common.proto
-
 func encodeCIDR(ip []byte, prefix uint32) []byte {
 	var b []byte
 	b = appendBytesField(b, 1, ip)
@@ -309,19 +272,21 @@ func encodeCIDR(ip []byte, prefix uint32) []byte {
 	return b
 }
 
-func encodeGeoIP(tag string, cidrs [][]byte) []byte {
+// encodeTagged encodes a GeoSite or GeoIP message: tag (field 1) + repeated entries (field 2).
+func encodeTagged(tag string, entries [][]byte) []byte {
 	var b []byte
 	b = appendStringField(b, 1, tag)
-	for _, c := range cidrs {
-		b = appendBytesField(b, 2, c)
+	for _, e := range entries {
+		b = appendBytesField(b, 2, e)
 	}
 	return b
 }
 
-func encodeGeoIPList(geoIPs [][]byte) []byte {
+// encodeRepeated encodes a GeoSiteList or GeoIPList: repeated messages (field 1).
+func encodeRepeated(items [][]byte) []byte {
 	var b []byte
-	for _, g := range geoIPs {
-		b = appendBytesField(b, 1, g)
+	for _, item := range items {
+		b = appendBytesField(b, 1, item)
 	}
 	return b
 }
