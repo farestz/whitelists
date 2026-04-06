@@ -1,56 +1,56 @@
 # Whitelists
 
-Генерация v2ray/xray-совместимых `whitedomains.dat` и `whiteips.dat` с белыми списками РФ.
+Generates v2ray/xray-compatible `whitedomains.dat` and `whiteips.dat` with Russian whitelisted domains and IPs.
 
-## Сборка
+## Build
 
 ```bash
 docker build --output=. .
 ```
 
-Результат: `whitedomains.dat`, `whiteips.dat`, `*.sha256sum` в текущей директории.
+Produces `whitedomains.dat`, `whiteips.dat`, `*.sha256sum` in the current directory.
 
-## Использование в клиентах
+## Client usage
 
-Тег `DIRECT` — указывать в routing rules:
-- `ext:whitedomains.dat:direct` — домены
-- `ext:whiteips.dat:direct` — IP-адреса
+Tag `DIRECT` — use in routing rules:
+- `ext:whitedomains.dat:direct` — domains
+- `ext:whiteips.dat:direct` — IP addresses
 
-## Источники данных
+## Data sources
 
-Upstream (скачиваются при сборке):
+Upstream (fetched at build time):
 - [artembolotov/custom-geosite](https://github.com/artembolotov/custom-geosite) → `lists/direct.txt`
 - [hxehex/russia-mobile-internet-whitelist](https://github.com/hxehex/russia-mobile-internet-whitelist) → `whitelist.txt`, `cidrwhitelist.txt`
 
-Кастомные (коммитятся в репо):
-- `lists/domains-custom.txt` — домены, по одному на строку
-- `lists/ips-custom.txt` — CIDR-диапазоны, по одному на строку
+Custom (committed to repo):
+- `lists/domains-custom.txt` — domains, one per line
+- `lists/ips-custom.txt` — CIDRs, one per line
 
-### Формат кастомных доменов
+### Custom domain format
 
 ```
-example.ru          # domain: match (домен + поддомены), по умолчанию
-full:exact.host.ru  # full: только точное совпадение
-domain:example.ru   # domain: явно
-regex:^.*\.ru$      # regex: регулярное выражение
+example.ru          # domain: match (host + subdomains), default
+full:exact.host.ru  # full: exact match only
+domain:example.ru   # domain: explicit
+regex:^.*\.ru$      # regex: regular expression
 ```
 
-## CLI — проверка записей
+## CLI — check entries
 
 ```bash
-go run . check oneme.ru vk.com           # проверка доменов
-go run . check 2.63.1.1                  # проверка IP
-go run . check oneme.ru 2.63.1.1         # микс — авто-определение domain/IP
+go run . check oneme.ru vk.com           # check domains
+go run . check 2.63.1.1                  # check IP
+go run . check oneme.ru 2.63.1.1         # mixed — auto-detects domain vs IP
 ```
 
-- Декодирует .dat файлы (hand-rolled protobuf decoder)
-- Матчинг по семантике v2ray: domain: (поддомены), full: (точное), regex:, keyword:
-- Домены: O(1) map lookup + hierarchy walk по поддоменам
-- IP: проверка вхождения в CIDR через net.IPNet.Contains()
-- Exit code: 0 если все найдены, 1 если есть промахи
+- Decodes .dat files (hand-rolled protobuf decoder)
+- Matching follows v2ray semantics: domain: (subdomains), full: (exact), regex:, keyword:
+- Domains: O(1) map lookup + hierarchy walk for subdomains
+- IPs: CIDR containment via net.IPNet.Contains()
+- Exit code: 0 if all found, 1 if any miss
 
-## Технические детали
+## Technical details
 
 - Go 1.23+, zero dependencies
-- Protobuf encoding/decoding hand-rolled (формат v2ray-core GeoSite/GeoIP)
-- Дедупликация доменов и CIDR при мерже источников
+- Hand-rolled protobuf encoding/decoding (v2ray-core GeoSite/GeoIP format)
+- Domain and CIDR deduplication when merging sources
