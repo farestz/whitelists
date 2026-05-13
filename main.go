@@ -11,7 +11,6 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
-	"sort"
 	"strings"
 	"time"
 )
@@ -91,12 +90,6 @@ func runBuild() {
 		fmt.Fprintf(os.Stderr, "domains: %v\n", err)
 		os.Exit(1)
 	}
-	beforeDomains := len(domains)
-	domains = collapseDomains(domains)
-	if err := writeDomainsDebug("data/whitedomains-merged.txt", domains); err != nil {
-		fmt.Fprintf(os.Stderr, "warning: write merged debug: %v\n", err)
-	}
-
 	var encodedDomains [][]byte
 	for _, e := range domains {
 		encodedDomains = append(encodedDomains, encodeDomain(e.typ, e.value))
@@ -107,7 +100,7 @@ func runBuild() {
 		fmt.Fprintf(os.Stderr, "write whitedomains.dat: %v\n", err)
 		os.Exit(1)
 	}
-	fmt.Printf("whitedomains.dat: %d domains (%d before collapse), %d bytes\n", len(domains), beforeDomains, len(geositeDat))
+	fmt.Printf("whitedomains.dat: %d domains, %d bytes\n", len(domains), len(geositeDat))
 
 	// Build whiteips.dat
 	cidrs, err := mergeCIDRs(cidrFiles)
@@ -587,74 +580,6 @@ func parseDomainLine(line string) (domainEntry, error) {
 		}
 	}
 	return domainEntry{typ: domainTypeDomain, value: line}, nil
-}
-
-// collapseDomains drops entries whose match is already covered by a broader
-// Domain-type entry in the same list. Under v2ray Domain semantics, a Domain
-// entry "foo.bar" matches "foo.bar" exact plus every subdomain "*.foo.bar",
-// so any sibling Domain or Full entry strictly below it is redundant.
-// Regex entries are kept as-is — we can't reason about their coverage.
-func collapseDomains(entries []domainEntry) []domainEntry {
-	domainParents := make(map[string]bool, len(entries))
-	for _, e := range entries {
-		if e.typ == domainTypeDomain {
-			domainParents[strings.ToLower(e.value)] = true
-		}
-	}
-
-	covered := func(v string) bool {
-		s := strings.ToLower(v)
-		for {
-			dot := strings.IndexByte(s, '.')
-			if dot < 0 {
-				return false
-			}
-			s = s[dot+1:]
-			if domainParents[s] {
-				return true
-			}
-		}
-	}
-
-	result := entries[:0]
-	for _, e := range entries {
-		if e.typ == domainTypeRegex {
-			result = append(result, e)
-			continue
-		}
-		if covered(e.value) {
-			continue
-		}
-		result = append(result, e)
-	}
-	return result
-}
-
-// writeDomainsDebug dumps the post-collapse domain set to disk for local
-// inspection. The output stays in data/ (gitignored, not copied by the
-// Dockerfile) so this is a developer aid, not a build artifact.
-func writeDomainsDebug(path string, entries []domainEntry) error {
-	sorted := append([]domainEntry(nil), entries...)
-	sort.Slice(sorted, func(i, j int) bool {
-		if sorted[i].value != sorted[j].value {
-			return sorted[i].value < sorted[j].value
-		}
-		return sorted[i].typ < sorted[j].typ
-	})
-	var b strings.Builder
-	for _, e := range sorted {
-		switch e.typ {
-		case domainTypeFull:
-			b.WriteString("full:")
-		case domainTypeRegex:
-			b.WriteString("regex:")
-		case domainTypePlain:
-			b.WriteString("keyword:")
-		}
-		b.WriteString(e.value)
-		b.WriteByte('\n')
-	}
-	return os.WriteFile(path, []byte(b.String()), 0644)
 }
 
 type cidrEntry struct {
