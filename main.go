@@ -90,6 +90,8 @@ func runBuild() {
 		fmt.Fprintf(os.Stderr, "domains: %v\n", err)
 		os.Exit(1)
 	}
+	beforeDomains := len(domains)
+	domains = collapseDomains(domains)
 
 	var encodedDomains [][]byte
 	for _, e := range domains {
@@ -101,7 +103,7 @@ func runBuild() {
 		fmt.Fprintf(os.Stderr, "write whitedomains.dat: %v\n", err)
 		os.Exit(1)
 	}
-	fmt.Printf("whitedomains.dat: %d domains, %d bytes\n", len(domains), len(geositeDat))
+	fmt.Printf("whitedomains.dat: %d domains (%d before collapse), %d bytes\n", len(domains), beforeDomains, len(geositeDat))
 
 	// Build whiteips.dat
 	cidrs, err := mergeCIDRs(cidrFiles)
@@ -581,6 +583,47 @@ func parseDomainLine(line string) (domainEntry, error) {
 		}
 	}
 	return domainEntry{typ: domainTypeDomain, value: line}, nil
+}
+
+// collapseDomains drops entries whose match is already covered by a broader
+// Domain-type entry in the same list. Under v2ray Domain semantics, a Domain
+// entry "foo.bar" matches "foo.bar" exact plus every subdomain "*.foo.bar",
+// so any sibling Domain or Full entry strictly below it is redundant.
+// Regex entries are kept as-is — we can't reason about their coverage.
+func collapseDomains(entries []domainEntry) []domainEntry {
+	domainParents := make(map[string]bool, len(entries))
+	for _, e := range entries {
+		if e.typ == domainTypeDomain {
+			domainParents[strings.ToLower(e.value)] = true
+		}
+	}
+
+	covered := func(v string) bool {
+		s := strings.ToLower(v)
+		for {
+			dot := strings.IndexByte(s, '.')
+			if dot < 0 {
+				return false
+			}
+			s = s[dot+1:]
+			if domainParents[s] {
+				return true
+			}
+		}
+	}
+
+	result := entries[:0]
+	for _, e := range entries {
+		if e.typ == domainTypeRegex {
+			result = append(result, e)
+			continue
+		}
+		if covered(e.value) {
+			continue
+		}
+		result = append(result, e)
+	}
+	return result
 }
 
 type cidrEntry struct {
