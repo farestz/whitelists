@@ -34,7 +34,6 @@ type upstream struct {
 }
 
 var upstreamSources = []upstream{
-	{"https://raw.githubusercontent.com/hxehex/russia-mobile-internet-whitelist/main/whitelist.txt", "data/hxehex-domains.txt"},
 	{"https://raw.githubusercontent.com/hxehex/russia-mobile-internet-whitelist/main/cidrwhitelist.txt", "data/hxehex-cidrs.txt"},
 }
 
@@ -43,7 +42,6 @@ var jsonCIDRSources = []upstream{
 }
 
 var domainFiles = []string{
-	"data/hxehex-domains.txt",
 	"lists/domains-custom.txt",
 }
 

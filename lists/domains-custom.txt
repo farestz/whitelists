@@ -1,9 +1,63 @@
 # Custom domain additions for the whitelist
-# Supported prefixes: full:, domain:, regex:
-# No prefix = domain: match (host + all subdomains)
 # Lines starting with # are comments
+# No prefix = domain: match (host + all subdomains)
+# Supported prefixes: full:, domain:, regex:
 
+2gis.com
+2gis.ru
+47news.ru
+akashi.vk-portal.net
+alfabank.ru
+auth-nsdi.ru
+auto.ru
+avito.ru
+avito.st
+cdn-tinkoff.ru
+cdn-vk.ru
+cikrf.ru
+digital.gov.ru
+dzen.ru
+gazeta.ru
+gosuslugi.ru
+gov.ru
+government.ru
+gu-st.ru
+izbirkom.ru
+kinopoisk.ru
+kp.ru
+kremlin.ru
+lemanapro.ru
+lenta.ru
+lmru.tech
 mail.ru
+max.ru
+moskva.taximaxim.ru
+mradx.net
+okcdn.ru
+oneme.ru
+ozon.ru
+ozone.ru
+rambler.ru
+rbc.ru
+res-nsdi.ru
+rutube.ru
+rutubelist.ru
+rzd.ru
+sber.ru
+sberbank.ru
+sirius.online
+tbank.ru
+tutu.ru
+userapi.com
+vk-portal.net
 vk.com
 vk.ru
-userapi.com
+vtb.ru
+wb.ru
+wildberries.ru
+xn--80ajghhoc2aj1c8b.xn--p1ai
+ya.ru
+yandex.com
+yandex.net
+yandex.ru
+yastatic.net

@@ -19,8 +19,10 @@ In v2ray/xray routing rules:
 
 ## Sources
 
-- [hxehex/russia-mobile-internet-whitelist](https://github.com/hxehex/russia-mobile-internet-whitelist) — mobile network whitelisted domains & IPs
+- [hxehex/russia-mobile-internet-whitelist](https://github.com/hxehex/russia-mobile-internet-whitelist) — IP CIDRs (domains list not used)
 - [openlibrecommunity/twl](https://github.com/openlibrecommunity/twl) — IP subnets (CIDRs only)
+
+Domains come only from [`lists/domains-custom.txt`](lists/domains-custom.txt).
 
 Custom additions: [`lists/`](lists/)
 
