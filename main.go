@@ -55,6 +55,8 @@ var cidrFiles = []string{
 	"lists/ips-custom.txt",
 }
 
+var cidrExcludeFile = "lists/ips-exclude.txt"
+
 func main() {
 	if len(os.Args) > 1 && os.Args[1] == "check" {
 		runCheck(os.Args[2:])
@@ -110,6 +112,14 @@ func runBuild() {
 		os.Exit(1)
 	}
 
+	excludes, err := mergeCIDRs([]string{cidrExcludeFile})
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "exclude cidrs: %v\n", err)
+		os.Exit(1)
+	}
+	before := len(cidrs)
+	cidrs = subtractCIDRs(cidrs, excludes)
+
 	var encodedCIDRs [][]byte
 	for _, c := range cidrs {
 		encodedCIDRs = append(encodedCIDRs, encodeCIDR(c.ip, c.prefix))
@@ -120,7 +130,7 @@ func runBuild() {
 		fmt.Fprintf(os.Stderr, "write whiteips.dat: %v\n", err)
 		os.Exit(1)
 	}
-	fmt.Printf("whiteips.dat: %d CIDRs, %d bytes\n", len(cidrs), len(geoipDat))
+	fmt.Printf("whiteips.dat: %d CIDRs (%d before exclude of %d), %d bytes\n", len(cidrs), before, len(excludes), len(geoipDat))
 
 	writeChecksum(domainDatFile, geositeDat)
 	writeChecksum(ipDatFile, geoipDat)
@@ -609,6 +619,67 @@ func mergeCIDRs(files []string) ([]cidrEntry, error) {
 		}
 	}
 	return result, nil
+}
+
+// subtractCIDRs removes every prefix in excludes from includes, splitting
+// covering prefixes into smaller ones where needed so no excluded address
+// remains in the result.
+func subtractCIDRs(includes, excludes []cidrEntry) []cidrEntry {
+	result := includes
+	for _, e := range excludes {
+		var next []cidrEntry
+		for _, i := range result {
+			next = append(next, subtractOne(i, e)...)
+		}
+		result = next
+	}
+	return result
+}
+
+func subtractOne(inc, exc cidrEntry) []cidrEntry {
+	if len(inc.ip) != len(exc.ip) {
+		return []cidrEntry{inc} // different address families
+	}
+	if cidrContains(exc, inc) {
+		return nil // include fully covered → drop
+	}
+	if !cidrContains(inc, exc) {
+		return []cidrEntry{inc} // no overlap
+	}
+	lo, hi := splitPrefix(inc)
+	return append(subtractOne(lo, exc), subtractOne(hi, exc)...)
+}
+
+// cidrContains reports whether parent contains child (parent ⊇ child).
+func cidrContains(parent, child cidrEntry) bool {
+	if parent.prefix > child.prefix {
+		return false
+	}
+	full := int(parent.prefix) / 8
+	rem := int(parent.prefix) % 8
+	for i := 0; i < full; i++ {
+		if parent.ip[i] != child.ip[i] {
+			return false
+		}
+	}
+	if rem > 0 {
+		mask := byte(0xff << (8 - rem))
+		if parent.ip[full]&mask != child.ip[full]&mask {
+			return false
+		}
+	}
+	return true
+}
+
+// splitPrefix splits p into two prefixes of length p.prefix+1, differing
+// in the next bit. Caller must ensure p.prefix < len(p.ip)*8.
+func splitPrefix(p cidrEntry) (cidrEntry, cidrEntry) {
+	lo := cidrEntry{ip: append([]byte(nil), p.ip...), prefix: p.prefix + 1}
+	hi := cidrEntry{ip: append([]byte(nil), p.ip...), prefix: p.prefix + 1}
+	byteIdx := int(p.prefix) / 8
+	bitIdx := int(p.prefix) % 8
+	hi.ip[byteIdx] |= 1 << (7 - bitIdx)
+	return lo, hi
 }
 
 func writeChecksum(path string, data []byte) {

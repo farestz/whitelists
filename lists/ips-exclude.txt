@@ -1,0 +1,8 @@
+# CIDRs to subtract from the merged IP whitelist.
+# Use this for Russian-hosted prefixes that should NOT bypass the VPN —
+# e.g. when DPI/RKN blocks a site by SNI on the direct route, the only
+# way to reach it is via the foreign proxy.
+# Format: one CIDR per line. Lines starting with # are comments.
+
+# autosport.com.ru and others on this Selectel /24 — blocked by RKN SNI filter
+82.202.238.0/24
