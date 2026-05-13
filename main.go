@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strings"
 	"time"
 )
@@ -92,6 +93,9 @@ func runBuild() {
 	}
 	beforeDomains := len(domains)
 	domains = collapseDomains(domains)
+	if err := writeDomainsDebug("data/whitedomains-merged.txt", domains); err != nil {
+		fmt.Fprintf(os.Stderr, "warning: write merged debug: %v\n", err)
+	}
 
 	var encodedDomains [][]byte
 	for _, e := range domains {
@@ -624,6 +628,33 @@ func collapseDomains(entries []domainEntry) []domainEntry {
 		result = append(result, e)
 	}
 	return result
+}
+
+// writeDomainsDebug dumps the post-collapse domain set to disk for local
+// inspection. The output stays in data/ (gitignored, not copied by the
+// Dockerfile) so this is a developer aid, not a build artifact.
+func writeDomainsDebug(path string, entries []domainEntry) error {
+	sorted := append([]domainEntry(nil), entries...)
+	sort.Slice(sorted, func(i, j int) bool {
+		if sorted[i].value != sorted[j].value {
+			return sorted[i].value < sorted[j].value
+		}
+		return sorted[i].typ < sorted[j].typ
+	})
+	var b strings.Builder
+	for _, e := range sorted {
+		switch e.typ {
+		case domainTypeFull:
+			b.WriteString("full:")
+		case domainTypeRegex:
+			b.WriteString("regex:")
+		case domainTypePlain:
+			b.WriteString("keyword:")
+		}
+		b.WriteString(e.value)
+		b.WriteByte('\n')
+	}
+	return os.WriteFile(path, []byte(b.String()), 0644)
 }
 
 type cidrEntry struct {
