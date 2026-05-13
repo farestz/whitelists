@@ -2,3 +2,7 @@
 # Supported prefixes: full:, domain:, regex:
 # No prefix = domain: match (host + all subdomains)
 # Lines starting with # are comments
+
+mail.ru
+vk.com
+vk.ru
