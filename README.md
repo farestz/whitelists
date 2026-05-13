@@ -21,6 +21,7 @@ In v2ray/xray routing rules:
 
 - [artembolotov/custom-geosite](https://github.com/artembolotov/custom-geosite) — curated Russian domains
 - [hxehex/russia-mobile-internet-whitelist](https://github.com/hxehex/russia-mobile-internet-whitelist) — mobile network whitelisted domains & IPs
+- [openlibrecommunity/twl](https://github.com/openlibrecommunity/twl) — IP subnets (CIDRs only)
 
 Custom additions: [`lists/`](lists/)
 

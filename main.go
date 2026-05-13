@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"crypto/sha256"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net"
@@ -38,6 +39,10 @@ var upstreamSources = []upstream{
 	{"https://raw.githubusercontent.com/hxehex/russia-mobile-internet-whitelist/main/cidrwhitelist.txt", "data/hxehex-cidrs.txt"},
 }
 
+var jsonCIDRSources = []upstream{
+	{"https://raw.githubusercontent.com/openlibrecommunity/twl/main/code/subnet/out/subnets.c.json", "data/openlibre-cidrs.txt"},
+}
+
 var domainFiles = []string{
 	"data/artembolotov-domains.txt",
 	"data/hxehex-domains.txt",
@@ -46,6 +51,7 @@ var domainFiles = []string{
 
 var cidrFiles = []string{
 	"data/hxehex-cidrs.txt",
+	"data/openlibre-cidrs.txt",
 	"lists/ips-custom.txt",
 }
 
@@ -66,6 +72,13 @@ func runBuild() {
 
 	for _, src := range upstreamSources {
 		if err := download(src.url, src.file); err != nil {
+			fmt.Fprintf(os.Stderr, "download %s: %v\n", src.url, err)
+			os.Exit(1)
+		}
+	}
+
+	for _, src := range jsonCIDRSources {
+		if err := downloadJSONCIDRs(src.url, src.file); err != nil {
 			fmt.Fprintf(os.Stderr, "download %s: %v\n", src.url, err)
 			os.Exit(1)
 		}
@@ -430,6 +443,57 @@ func download(url, dest string) error {
 		return err
 	}
 	if _, err := io.Copy(f, resp.Body); err != nil {
+		f.Close()
+		os.Remove(tmp)
+		return err
+	}
+	if err := f.Close(); err != nil {
+		os.Remove(tmp)
+		return err
+	}
+	return os.Rename(tmp, dest)
+}
+
+// downloadJSONCIDRs fetches a JSON array of {"cidr": "..."} objects and
+// writes one CIDR per line to dest, so it plugs into the standard CIDR
+// merge/dedup pipeline.
+func downloadJSONCIDRs(url, dest string) error {
+	if err := os.MkdirAll(filepath.Dir(dest), 0755); err != nil {
+		return err
+	}
+	resp, err := httpClient.Get(url)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 200 {
+		return fmt.Errorf("HTTP %d", resp.StatusCode)
+	}
+
+	var entries []struct {
+		CIDR string `json:"cidr"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&entries); err != nil {
+		return fmt.Errorf("parse JSON: %w", err)
+	}
+
+	tmp := dest + ".tmp"
+	f, err := os.Create(tmp)
+	if err != nil {
+		return err
+	}
+	w := bufio.NewWriter(f)
+	for _, e := range entries {
+		if e.CIDR == "" {
+			continue
+		}
+		if _, err := w.WriteString(e.CIDR + "\n"); err != nil {
+			f.Close()
+			os.Remove(tmp)
+			return err
+		}
+	}
+	if err := w.Flush(); err != nil {
 		f.Close()
 		os.Remove(tmp)
 		return err
