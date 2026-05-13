@@ -6,3 +6,6 @@
 
 # autosport.com.ru and others on this Selectel /24 — blocked by RKN SNI filter
 82.202.238.0/24
+
+# appleinsider.ru on Yandex Cloud /24 — blocked by RKN SNI filter
+31.44.9.0/24
