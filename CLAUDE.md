@@ -19,13 +19,13 @@ Tag `DIRECT` — use in routing rules:
 ## Data sources
 
 Upstream (fetched at build time):
-- [artembolotov/custom-geosite](https://github.com/artembolotov/custom-geosite) → `lists/direct.txt`
 - [hxehex/russia-mobile-internet-whitelist](https://github.com/hxehex/russia-mobile-internet-whitelist) → `whitelist.txt`, `cidrwhitelist.txt`
 - [openlibrecommunity/twl](https://github.com/openlibrecommunity/twl) → `code/subnet/out/subnets.c.json` (JSON; only `cidr` field is used)
 
 Custom (committed to repo):
 - `lists/domains-custom.txt` — domains, one per line
 - `lists/ips-custom.txt` — CIDRs, one per line
+- `lists/ips-exclude.txt` — CIDRs to subtract from the merged IP whitelist (for RKN-SNI-blocked sites that must go through the VPN)
 
 ### Custom domain format
 

@@ -34,7 +34,6 @@ type upstream struct {
 }
 
 var upstreamSources = []upstream{
-	{"https://raw.githubusercontent.com/artembolotov/custom-geosite/main/lists/direct.txt", "data/artembolotov-domains.txt"},
 	{"https://raw.githubusercontent.com/hxehex/russia-mobile-internet-whitelist/main/whitelist.txt", "data/hxehex-domains.txt"},
 	{"https://raw.githubusercontent.com/hxehex/russia-mobile-internet-whitelist/main/cidrwhitelist.txt", "data/hxehex-cidrs.txt"},
 }
@@ -44,7 +43,6 @@ var jsonCIDRSources = []upstream{
 }
 
 var domainFiles = []string{
-	"data/artembolotov-domains.txt",
 	"data/hxehex-domains.txt",
 	"lists/domains-custom.txt",
 }
