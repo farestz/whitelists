@@ -9,3 +9,7 @@
 
 # appleinsider.ru on Yandex Cloud /24 — blocked by RKN SNI filter
 31.44.9.0/24
+
+# Apple Edge Cache on Beeline (VimpelCom) — App Store downloads resolve here
+# from RU networks but the node stalls updates; force through the VPN instead
+81.9.21.0/24
