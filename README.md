@@ -23,9 +23,7 @@ In v2ray/xray routing rules:
 - [openlibrecommunity/twl](https://github.com/openlibrecommunity/twl) — IP subnets (CIDRs only)
 - [kirilllavrov/RU-domain-list-for-whitelist](https://github.com/kirilllavrov/RU-domain-list-for-whitelist) — per-service RU domain lists from `domains/ru/` (fetched as tarball at build time)
 
-Local additions: [`lists/domains-custom.txt`](lists/domains-custom.txt) is merged on top.
-
-Custom additions: [`lists/`](lists/)
+Local additions: [`lists/domains-custom.txt`](lists/domains-custom.txt) (domains), [`lists/ips-custom.txt`](lists/ips-custom.txt), [`lists/ips-exclude.txt`](lists/ips-exclude.txt) — merged on top.
 
 ## Build locally
 
