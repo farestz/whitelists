@@ -21,8 +21,9 @@ In v2ray/xray routing rules:
 
 - [hxehex/russia-mobile-internet-whitelist](https://github.com/hxehex/russia-mobile-internet-whitelist) — IP CIDRs (domains list not used)
 - [openlibrecommunity/twl](https://github.com/openlibrecommunity/twl) — IP subnets (CIDRs only)
+- [kirilllavrov/RU-domain-list-for-whitelist](https://github.com/kirilllavrov/RU-domain-list-for-whitelist) — per-service RU domain lists from `domains/ru/` (fetched as tarball at build time)
 
-Domains come only from [`lists/domains-custom.txt`](lists/domains-custom.txt).
+Local additions: [`lists/domains-custom.txt`](lists/domains-custom.txt) is merged on top.
 
 Custom additions: [`lists/`](lists/)
 

@@ -1,7 +1,9 @@
 package main
 
 import (
+	"archive/tar"
 	"bufio"
+	"compress/gzip"
 	"crypto/sha256"
 	"encoding/json"
 	"fmt"
@@ -11,6 +13,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strings"
 	"time"
 )
@@ -40,6 +43,14 @@ var upstreamSources = []upstream{
 var jsonCIDRSources = []upstream{
 	{"https://raw.githubusercontent.com/openlibrecommunity/twl/main/code/subnet/out/subnets.c.json", "data/openlibre-cidrs.txt"},
 }
+
+// kirilllavrovDomainsTarball is a per-site list of RU domains (one file per
+// service in domains/ru/). Extracted into kirilllavrovDomainsDir on build.
+var (
+	kirilllavrovDomainsTarball = "https://codeload.github.com/kirilllavrov/RU-domain-list-for-whitelist/tar.gz/refs/heads/main"
+	kirilllavrovDomainsSubdir  = "domains/ru/"
+	kirilllavrovDomainsDir     = "data/kirilllavrov-ru"
+)
 
 var domainFiles = []string{
 	"lists/domains-custom.txt",
@@ -82,8 +93,16 @@ func runBuild() {
 		}
 	}
 
+	kirilllavrovFiles, err := extractTarballSubdir(kirilllavrovDomainsTarball, kirilllavrovDomainsSubdir, kirilllavrovDomainsDir)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "download %s: %v\n", kirilllavrovDomainsTarball, err)
+		os.Exit(1)
+	}
+
 	// Build whitedomains.dat
-	domains, err := mergeDomains(domainFiles)
+	allDomainFiles := append([]string{}, domainFiles...)
+	allDomainFiles = append(allDomainFiles, kirilllavrovFiles...)
+	domains, err := mergeDomains(allDomainFiles)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "domains: %v\n", err)
 		os.Exit(1)
@@ -508,6 +527,77 @@ func downloadJSONCIDRs(url, dest string) error {
 		return err
 	}
 	return os.Rename(tmp, dest)
+}
+
+// extractTarballSubdir downloads a .tar.gz from url and writes every regular
+// file whose path (after the leading top-level directory GitHub injects) starts
+// with subdir into destDir, flattened. Returns the destination paths sorted by
+// name. destDir is wiped before extraction so stale files don't linger.
+func extractTarballSubdir(url, subdir, destDir string) ([]string, error) {
+	if err := os.RemoveAll(destDir); err != nil {
+		return nil, err
+	}
+	if err := os.MkdirAll(destDir, 0755); err != nil {
+		return nil, err
+	}
+
+	resp, err := httpClient.Get(url)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 200 {
+		return nil, fmt.Errorf("HTTP %d", resp.StatusCode)
+	}
+
+	gz, err := gzip.NewReader(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+	defer gz.Close()
+
+	tr := tar.NewReader(gz)
+	var written []string
+	for {
+		hdr, err := tr.Next()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return nil, err
+		}
+		if hdr.Typeflag != tar.TypeReg {
+			continue
+		}
+		// GitHub tarballs prefix everything with "<repo>-<ref>/". Strip it.
+		parts := strings.SplitN(hdr.Name, "/", 2)
+		if len(parts) != 2 {
+			continue
+		}
+		rel := parts[1]
+		if !strings.HasPrefix(rel, subdir) {
+			continue
+		}
+		name := strings.TrimPrefix(rel, subdir)
+		if name == "" || strings.Contains(name, "/") {
+			continue // skip nested dirs — flat layout only
+		}
+		dest := filepath.Join(destDir, name)
+		f, err := os.Create(dest)
+		if err != nil {
+			return nil, err
+		}
+		if _, err := io.Copy(f, tr); err != nil {
+			f.Close()
+			return nil, err
+		}
+		if err := f.Close(); err != nil {
+			return nil, err
+		}
+		written = append(written, dest)
+	}
+	sort.Strings(written)
+	return written, nil
 }
 
 func readLines(path string) ([]string, error) {
