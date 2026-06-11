@@ -1,6 +1,6 @@
 # Whitelists
 
-Generates v2ray/xray-compatible `whitedomains.dat` and `whiteips.dat` with Russian whitelisted domains and IPs, plus Shadowrocket/Surge rule-sets (`category-ru.list`, `youtube.list`) decoded from Loyalsoldier's `geosite:*`.
+Generates v2ray/xray-compatible `whitedomains.dat` and `whiteips.dat` with Russian whitelisted domains and IPs, plus Shadowrocket/Surge rule-sets: `whitedomains.list` (our curated whitelist, the `geosite:direct` twin) and `category-ru.list` / `youtube.list` (decoded from Loyalsoldier's `geosite:*`).
 
 ## Build
 
@@ -8,7 +8,7 @@ Generates v2ray/xray-compatible `whitedomains.dat` and `whiteips.dat` with Russi
 docker build --output=. .
 ```
 
-Produces `whitedomains.dat`, `whiteips.dat`, `category-ru.list`, `youtube.list`, `*.sha256sum` in the current directory.
+Produces `whitedomains.dat`, `whiteips.dat`, `whitedomains.list`, `category-ru.list`, `youtube.list`, `*.sha256sum` in the current directory.
 
 ## Client usage
 
@@ -19,13 +19,18 @@ v2ray/xray (tag `DIRECT`):
 
 Shadowrocket / Surge (`[Rule]`) — note the policy differs per list:
 
+- `RULE-SET,…/releases/latest/download/whitedomains.list,DIRECT`
 - `RULE-SET,…/releases/latest/download/category-ru.list,DIRECT`
 - `RULE-SET,…/releases/latest/download/youtube.list,PROXY`
 
-## Two independent datasets
+## Rule-set artifacts — two origins
 
-- `whitedomains.dat` / `whiteips.dat` — **our curated** RU whitelist (custom + kirilllavrov + CIDR upstreams).
-- `category-ru.list` / `youtube.list` — **Loyalsoldier's** `geosite:*` tags, decoded to Shadowrocket rule-sets. NOT derived from the curated set; separate upstream so Shadowrocket clients get parity with the xray `geosite:*` rules. Built by `buildGeositeRuleSets()` in `main.go`: downloads `geosite.dat` once, then `writeGeositeList()` extracts each tag in `geositeRuleSets` (domain→DOMAIN-SUFFIX, full→DOMAIN, plain→DOMAIN-KEYWORD; regex skipped). The `.list` carries no policy — the consumer's RULE-SET line picks DIRECT/PROXY. To add another geosite tag: append to `geositeRuleSets` + the Dockerfile/CI artifact lists.
+All three `.list` files share the same Shadowrocket format (policy-less; consumer's RULE-SET line picks DIRECT/PROXY) and the same domain→rule conversion (`writeDomainRuleSet()`: domain→DOMAIN-SUFFIX, full→DOMAIN, plain→DOMAIN-KEYWORD; regex skipped — no domain-regexp rule type in Shadowrocket). They differ in where their domains come from:
+
+- `whitedomains.list` — **our curated** RU whitelist, the Shadowrocket twin of `whitedomains.dat` (same `domains` slice, i.e. the `geosite:direct` tag). Emitted inline in `main()` right after `whitedomains.dat`. This is what a Shadowrocket _whitelist-mode_ config routes to DIRECT (everything else → PROXY), matching the Happ `whitelists.json` profile (`DirectSites: ["geosite:direct"]`).
+- `category-ru.list` / `youtube.list` — **Loyalsoldier's** `geosite:*` tags, decoded from their compiled `geosite.dat`. NOT derived from the curated set; separate upstream so Shadowrocket clients get parity with the xray `geosite:*` rules. Built by `buildGeositeRuleSets()` → `writeGeositeList()` per tag in `geositeRuleSets`. To add another geosite tag: append to `geositeRuleSets` + the Dockerfile/CI artifact lists.
+
+`whitedomains.dat` / `whiteips.dat` are the v2ray/xray form of the curated whitelist (custom + kirilllavrov + CIDR upstreams).
 
 ## Data sources
 

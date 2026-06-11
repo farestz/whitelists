@@ -23,6 +23,7 @@ jobs:
         run: |
           test -f output/whitedomains.dat
           test -f output/whiteips.dat
+          test -f output/whitedomains.list
           test -f output/category-ru.list
           test -f output/youtube.list
           ls -lh output/
@@ -42,17 +43,21 @@ jobs:
             ext:whitedomains.dat:direct
             ext:whiteips.dat:direct
             ```
-            **Shadowrocket / Surge rule-sets (from Loyalsoldier geosite):**
+            **Shadowrocket / Surge rule-sets:**
             ```
+            RULE-SET,https://github.com/farestz/whitelists/releases/latest/download/whitedomains.list,DIRECT
             RULE-SET,https://github.com/farestz/whitelists/releases/latest/download/category-ru.list,DIRECT
             RULE-SET,https://github.com/farestz/whitelists/releases/latest/download/youtube.list,PROXY
             ```
+            `whitedomains.list` = curated RU whitelist (geosite:direct twin); `category-ru`/`youtube` from Loyalsoldier geosite.
           files: |
             output/whitedomains.dat
             output/whiteips.dat
+            output/whitedomains.list
             output/category-ru.list
             output/youtube.list
             output/whitedomains.dat.sha256sum
             output/whiteips.dat.sha256sum
+            output/whitedomains.list.sha256sum
             output/category-ru.list.sha256sum
             output/youtube.list.sha256sum

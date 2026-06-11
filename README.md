@@ -10,6 +10,7 @@ Grab the latest release assets:
 
 - [`whitedomains.dat`](../../releases/latest/download/whitedomains.dat) — domains (v2ray/xray)
 - [`whiteips.dat`](../../releases/latest/download/whiteips.dat) — IPs (CIDR, v2ray/xray)
+- [`whitedomains.list`](../../releases/latest/download/whitedomains.list) — same curated whitelist as a Shadowrocket/Surge rule-set (the `geosite:direct` twin of `whitedomains.dat`)
 - [`category-ru.list`](../../releases/latest/download/category-ru.list) — `geosite:category-ru` as a Shadowrocket/Surge rule-set
 - [`youtube.list`](../../releases/latest/download/youtube.list) — `geosite:youtube` as a Shadowrocket/Surge rule-set
 
@@ -22,6 +23,7 @@ In v2ray/xray routing rules:
 
 In Shadowrocket / Surge (`[Rule]`):
 
+    RULE-SET,https://github.com/farestz/whitelists/releases/latest/download/whitedomains.list,DIRECT
     RULE-SET,https://github.com/farestz/whitelists/releases/latest/download/category-ru.list,DIRECT
     RULE-SET,https://github.com/farestz/whitelists/releases/latest/download/youtube.list,PROXY
 
