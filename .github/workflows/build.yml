@@ -23,6 +23,7 @@ jobs:
         run: |
           test -f output/whitedomains.dat
           test -f output/whiteips.dat
+          test -f output/category-ru.list
           ls -lh output/
 
       - name: Generate release tag
@@ -35,13 +36,19 @@ jobs:
           tag_name: ${{ steps.tag.outputs.tag }}
           name: ${{ steps.tag.outputs.tag }}
           body: |
-            **Usage in v2ray/xray routing rules:**
+            **v2ray/xray routing rules:**
             ```
             ext:whitedomains.dat:direct
             ext:whiteips.dat:direct
             ```
+            **Shadowrocket / Surge rule-set (geosite:category-ru, from Loyalsoldier):**
+            ```
+            RULE-SET,https://github.com/farestz/whitelists/releases/latest/download/category-ru.list,DIRECT
+            ```
           files: |
             output/whitedomains.dat
             output/whiteips.dat
+            output/category-ru.list
             output/whitedomains.dat.sha256sum
             output/whiteips.dat.sha256sum
+            output/category-ru.list.sha256sum
