@@ -8,11 +8,14 @@ akashi.vk-portal.net
 auth-nsdi.ru
 cdn-vk.ru
 cikrf.ru
+dom.ru
 domru.ru
 eda.yandex
+ertelecom.ru
 facct.ru
 fasten.ru
 gazeta.ru
+geobasket.ru
 izbirkom.ru
 kp.ru
 lemanapro.ru
@@ -33,6 +36,7 @@ s7.ru
 s7cdn.online
 sber.ru
 sberbank.ru
+sbrf.ru
 sirius.online
 tbank.ru
 vk-analytics.ru
