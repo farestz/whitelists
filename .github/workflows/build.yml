@@ -24,6 +24,7 @@ jobs:
           test -f output/whitedomains.dat
           test -f output/whiteips.dat
           test -f output/category-ru.list
+          test -f output/youtube.list
           ls -lh output/
 
       - name: Generate release tag
@@ -41,14 +42,17 @@ jobs:
             ext:whitedomains.dat:direct
             ext:whiteips.dat:direct
             ```
-            **Shadowrocket / Surge rule-set (geosite:category-ru, from Loyalsoldier):**
+            **Shadowrocket / Surge rule-sets (from Loyalsoldier geosite):**
             ```
             RULE-SET,https://github.com/farestz/whitelists/releases/latest/download/category-ru.list,DIRECT
+            RULE-SET,https://github.com/farestz/whitelists/releases/latest/download/youtube.list,PROXY
             ```
           files: |
             output/whitedomains.dat
             output/whiteips.dat
             output/category-ru.list
+            output/youtube.list
             output/whitedomains.dat.sha256sum
             output/whiteips.dat.sha256sum
             output/category-ru.list.sha256sum
+            output/youtube.list.sha256sum

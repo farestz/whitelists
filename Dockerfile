@@ -5,5 +5,5 @@ COPY lists/ lists/
 RUN go run .
 
 FROM scratch
-COPY --from=builder /build/whitedomains.dat /build/whiteips.dat /build/category-ru.list /
+COPY --from=builder /build/whitedomains.dat /build/whiteips.dat /build/category-ru.list /build/youtube.list /
 COPY --from=builder /build/*.sha256sum /

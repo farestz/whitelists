@@ -1,6 +1,6 @@
 # Whitelists
 
-Generates v2ray/xray-compatible `whitedomains.dat` and `whiteips.dat` with Russian whitelisted domains and IPs, plus `category-ru.list` (Shadowrocket/Surge rule-set) decoded from Loyalsoldier's `geosite:category-ru`.
+Generates v2ray/xray-compatible `whitedomains.dat` and `whiteips.dat` with Russian whitelisted domains and IPs, plus Shadowrocket/Surge rule-sets (`category-ru.list`, `youtube.list`) decoded from Loyalsoldier's `geosite:*`.
 
 ## Build
 
@@ -8,7 +8,7 @@ Generates v2ray/xray-compatible `whitedomains.dat` and `whiteips.dat` with Russi
 docker build --output=. .
 ```
 
-Produces `whitedomains.dat`, `whiteips.dat`, `category-ru.list`, `*.sha256sum` in the current directory.
+Produces `whitedomains.dat`, `whiteips.dat`, `category-ru.list`, `youtube.list`, `*.sha256sum` in the current directory.
 
 ## Client usage
 
@@ -17,14 +17,15 @@ v2ray/xray (tag `DIRECT`):
 - `ext:whitedomains.dat:direct` — domains
 - `ext:whiteips.dat:direct` — IP addresses
 
-Shadowrocket / Surge (`[Rule]`):
+Shadowrocket / Surge (`[Rule]`) — note the policy differs per list:
 
-- `RULE-SET,https://github.com/farestz/whitelists/releases/latest/download/category-ru.list,DIRECT`
+- `RULE-SET,…/releases/latest/download/category-ru.list,DIRECT`
+- `RULE-SET,…/releases/latest/download/youtube.list,PROXY`
 
 ## Two independent datasets
 
 - `whitedomains.dat` / `whiteips.dat` — **our curated** RU whitelist (custom + kirilllavrov + CIDR upstreams).
-- `category-ru.list` — **Loyalsoldier's** `geosite:category-ru`, decoded to a Shadowrocket rule-set. NOT derived from the curated set; it's a separate upstream so Shadowrocket clients get parity with the xray `geosite:category-ru` rule. Built by `buildCategoryRuList()` in `main.go`, which downloads `geosite.dat` and extracts the `CATEGORY-RU` tag (domain→DOMAIN-SUFFIX, full→DOMAIN, plain→DOMAIN-KEYWORD; regex skipped).
+- `category-ru.list` / `youtube.list` — **Loyalsoldier's** `geosite:*` tags, decoded to Shadowrocket rule-sets. NOT derived from the curated set; separate upstream so Shadowrocket clients get parity with the xray `geosite:*` rules. Built by `buildGeositeRuleSets()` in `main.go`: downloads `geosite.dat` once, then `writeGeositeList()` extracts each tag in `geositeRuleSets` (domain→DOMAIN-SUFFIX, full→DOMAIN, plain→DOMAIN-KEYWORD; regex skipped). The `.list` carries no policy — the consumer's RULE-SET line picks DIRECT/PROXY. To add another geosite tag: append to `geositeRuleSets` + the Dockerfile/CI artifact lists.
 
 ## Data sources
 
