@@ -70,10 +70,18 @@ var (
 )
 
 // kirilllavrovSkip lists domains/ru/* files NOT merged into the whitelist.
-// "private" is v2fly geosite:private (router admin panels, *.in-addr.arpa,
-// special-use TLDs, Tailscale ts.net) — not RU sites; it bloats the DIRECT set
-// and its regexp:-prefixed entry (v2fly syntax) leaked as a malformed rule.
-var kirilllavrovSkip = map[string]bool{"private": true}
+//   - "private": v2fly geosite:private (router admin panels, *.in-addr.arpa,
+//     special-use TLDs, Tailscale ts.net) — not RU sites; bloats the DIRECT set
+//     and its regexp:-prefixed entry (v2fly syntax) leaked as a malformed rule.
+//   - "category-ru"/"whitelist-ru": pure v2fly aggregators — only `include:<svc>`
+//     directives, no domains of their own. Every target already has its own
+//     domains/ru/<svc> file that we flatten directly, so skipping these loses
+//     nothing; keeping them only leaked junk `include:<svc>` entries.
+var kirilllavrovSkip = map[string]bool{
+	"private":      true,
+	"category-ru":  true,
+	"whitelist-ru": true,
+}
 
 var domainFiles = []string{
 	"lists/domains-custom.txt",
@@ -797,6 +805,9 @@ func mergeDomains(files []string) ([]domainEntry, error) {
 			return nil, fmt.Errorf("%s: %w", path, err)
 		}
 		for _, line := range lines {
+			if strings.HasPrefix(line, "include:") {
+				continue // v2fly aggregator directive — the referenced file is flattened directly
+			}
 			e, err := parseDomainLine(line)
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "warning: %s: skipping %q: %v\n", path, line, err)
