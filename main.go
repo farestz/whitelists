@@ -839,10 +839,133 @@ func parseDomainLine(line string) (domainEntry, error) {
 			if val == "" {
 				return domainEntry{}, fmt.Errorf("empty value")
 			}
+			if pf.t != domainTypeRegex {
+				val = domainToASCII(val)
+			}
 			return domainEntry{typ: pf.t, value: val}, nil
 		}
 	}
-	return domainEntry{typ: domainTypeDomain, value: line}, nil
+	return domainEntry{typ: domainTypeDomain, value: domainToASCII(line)}, nil
+}
+
+// domainToASCII converts any non-ASCII (IDN U-label) parts of a domain to their
+// punycode A-label form (xn--…). Real traffic arrives as A-labels (SNI/Host), and
+// both Shadowrocket rule-sets and the v2ray .dat want ASCII — a U-label rule like
+// "яндекс.рф" matches nothing and is non-ASCII junk. ASCII labels pass through.
+// Hand-rolled RFC 3492 to keep the build zero-dependency (no x/net/idna).
+func domainToASCII(domain string) string {
+	if isASCII(domain) {
+		return domain
+	}
+	labels := strings.Split(domain, ".")
+	for i, lab := range labels {
+		if !isASCII(lab) {
+			labels[i] = "xn--" + punycodeEncode(lab)
+		}
+	}
+	return strings.Join(labels, ".")
+}
+
+func isASCII(s string) bool {
+	for i := 0; i < len(s); i++ {
+		if s[i] >= 0x80 {
+			return false
+		}
+	}
+	return true
+}
+
+// punycodeEncode encodes a single non-ASCII label per RFC 3492 (Punycode).
+func punycodeEncode(label string) string {
+	const (
+		base        = 36
+		tmin        = 1
+		tmax        = 26
+		initialBias = 72
+		initialN    = 128
+	)
+	input := []rune(label)
+	var out strings.Builder
+	basic := 0
+	for _, r := range input {
+		if r < initialN {
+			out.WriteByte(byte(r))
+			basic++
+		}
+	}
+	h := basic
+	if basic > 0 {
+		out.WriteByte('-')
+	}
+	n, delta, bias := initialN, 0, initialBias
+	for h < len(input) {
+		m := 0x7fffffff
+		for _, r := range input {
+			if int(r) >= n && int(r) < m {
+				m = int(r)
+			}
+		}
+		delta += (m - n) * (h + 1)
+		n = m
+		for _, r := range input {
+			c := int(r)
+			if c < n {
+				delta++
+			}
+			if c == n {
+				q := delta
+				for k := base; ; k += base {
+					t := k - bias
+					if t < tmin {
+						t = tmin
+					} else if t > tmax {
+						t = tmax
+					}
+					if q < t {
+						break
+					}
+					out.WriteByte(punyDigit(t + (q-t)%(base-t)))
+					q = (q - t) / (base - t)
+				}
+				out.WriteByte(punyDigit(q))
+				bias = punyAdapt(delta, h+1, h == basic)
+				delta = 0
+				h++
+			}
+		}
+		delta++
+		n++
+	}
+	return out.String()
+}
+
+func punyAdapt(delta, numPoints int, firstTime bool) int {
+	const (
+		base = 36
+		tmin = 1
+		tmax = 26
+		skew = 38
+		damp = 700
+	)
+	if firstTime {
+		delta /= damp
+	} else {
+		delta /= 2
+	}
+	delta += delta / numPoints
+	k := 0
+	for delta > ((base-tmin)*tmax)/2 {
+		delta /= base - tmin
+		k += base
+	}
+	return k + (base-tmin+1)*delta/(delta+skew)
+}
+
+func punyDigit(d int) byte {
+	if d < 26 {
+		return byte('a' + d)
+	}
+	return byte('0' + d - 26)
 }
 
 type cidrEntry struct {
