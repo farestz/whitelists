@@ -8,10 +8,7 @@ akashi.vk-portal.net
 auth-nsdi.ru
 cdn-vk.ru
 cikrf.ru
-dom.ru
-domru.ru
 eda.yandex
-ertelecom.ru
 facct.ru
 fasten.ru
 gazeta.ru
