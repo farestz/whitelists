@@ -4,8 +4,6 @@
 # Supported prefixes: full:, domain:, regex:
 
 47news.ru
-agat-group.com
-agatgroup.com
 akashi.vk-portal.net
 auth-nsdi.ru
 bcs.ru
