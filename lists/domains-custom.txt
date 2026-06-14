@@ -6,6 +6,8 @@
 47news.ru
 akashi.vk-portal.net
 auth-nsdi.ru
+bcs.ru
+broker.ru
 cdn-vk.ru
 cikrf.ru
 eda.yandex
