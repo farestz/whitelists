@@ -9,7 +9,6 @@ auth-nsdi.ru
 cdn-vk.ru
 cikrf.ru
 eda.yandex
-edna.io
 facct.ru
 fasten.ru
 gazeta.ru
@@ -27,6 +26,7 @@ mradx.net
 mtsdengi.ru
 mvideo.ru
 mwscdn.ru
+myemx.ru
 oneme.ru
 ozon.kz
 ozonusercontent.com
