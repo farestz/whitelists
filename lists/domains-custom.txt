@@ -4,12 +4,14 @@
 # Supported prefixes: full:, domain:, regex:
 
 47news.ru
+agat-group.com
 akashi.vk-portal.net
 auth-nsdi.ru
 bcs.ru
 broker.ru
 cdn-vk.ru
 cikrf.ru
+datago.ru
 eda.yandex
 facct.ru
 fasten.ru
@@ -29,6 +31,7 @@ mtsdengi.ru
 mvideo.ru
 mwscdn.ru
 myemx.ru
+nspk.ru
 oneme.ru
 ozon.kz
 ozonusercontent.com
@@ -38,6 +41,7 @@ res-nsdi.ru
 rutubelist.ru
 s7.ru
 s7cdn.online
+s7tl.ru
 sber.ru
 sberbank.ru
 sbermegamarket.ru
