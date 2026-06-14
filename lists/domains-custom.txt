@@ -12,7 +12,6 @@ bcs.ru
 broker.ru
 cdn-vk.ru
 cikrf.ru
-datago.ru
 eda.yandex
 facct.ru
 fasten.ru
@@ -31,7 +30,6 @@ mradx.net
 mtsdengi.ru
 mvideo.ru
 mwscdn.ru
-myemx.ru
 nspk.ru
 oneme.ru
 ozon.kz
