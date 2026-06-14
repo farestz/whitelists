@@ -14,10 +14,12 @@ fasten.ru
 gazeta.ru
 geobasket.ru
 izbirkom.ru
+kaspersky-labs.com
 kp.ru
 lemanapro.ru
 licard.com
 lmru.tech
+megamarket.tech
 moskva.taximaxim.ru
 mradx.net
 mtsdengi.ru
@@ -33,6 +35,7 @@ s7.ru
 s7cdn.online
 sber.ru
 sberbank.ru
+sbermegamarket.ru
 sbrf.ru
 sirius.online
 tbank.ru
