@@ -17,6 +17,7 @@ facct.ru
 fasten.ru
 gazeta.ru
 geobasket.ru
+goldapple.ru
 izbirkom.ru
 kaspersky-labs.com
 kp.ru
@@ -25,6 +26,7 @@ licard.com
 lmru.tech
 megamarket.tech
 mindbox.ru
+mobile.api-lmn.ru
 moskva.taximaxim.ru
 mradx.net
 mtsdengi.ru
