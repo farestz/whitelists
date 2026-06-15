@@ -10,7 +10,9 @@ bcs.ru
 broker.ru
 cdn-vk.ru
 cikrf.ru
+detmir.ru
 eda.yandex
+expf.ru
 facct.ru
 fasten.ru
 gazeta.ru
