@@ -32,6 +32,15 @@ All three `.list` files share the same Shadowrocket format (policy-less; consume
 
 `whitedomains.dat` / `whiteips.dat` are the v2ray/xray form of the curated whitelist (custom + kirilllavrov + CIDR upstreams).
 
+### Block tags embedded in `whitedomains.dat`
+
+`whitedomains.dat` is a **multi-tag** geosite container, not just the whitelist:
+
+- `geosite:direct` — the curated DIRECT whitelist (above).
+- `geosite:category-ads-all`, `geosite:category-ip-geo-detect` — copied verbatim from Loyalsoldier's `geosite.dat` (the same download `buildGeositeRuleSets()` uses) and embedded as extra tags. These exist so Happ can **block** them on-device (`BlockSites: ["geosite:category-ads-all", "geosite:category-ip-geo-detect"]`) against the single `Geositeurl` .dat — moving the drop off the proxy server (`block` outbound) onto the client, no round-trip. Driven by `geositeBlockTags` in `main.go`; to add/remove a block category, edit that slice (and the Happ `BlockSites` in `routing/whitelists.json`). The DIRECT tag is untouched, so friends consuming only `geosite:direct` are unaffected, and the stable `whitedomains.dat` URL is unchanged.
+
+`go run . check <domain>` decodes the **DIRECT tag only** — "is this whitelisted?" deliberately ignores the block tags, so an ad domain reports `MISS` even though it's present in the file.
+
 ## Data sources
 
 Upstream CIDR sources (fetched at build time):

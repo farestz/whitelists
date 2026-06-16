@@ -31,6 +31,19 @@ const (
 // policy in its RULE-SET line (category-ru → DIRECT, youtube → PROXY).
 var loyalsoldierGeositeURL = "https://github.com/Loyalsoldier/v2ray-rules-dat/releases/latest/download/geosite.dat"
 
+// loyalsoldierGeositeDat is where the compiled geosite.dat is downloaded once per
+// build. Reused for both the embedded block tags (below) and the Shadowrocket
+// rule-sets (geositeRuleSets).
+const loyalsoldierGeositeDat = "data/loyalsoldier-geosite.dat"
+
+// geositeBlockTags are decoded from Loyalsoldier's geosite and embedded as extra
+// tags inside whitedomains.dat, so Happ can block them on-device via BlockSites
+// (geosite:category-ads-all, geosite:category-ip-geo-detect) against the same
+// Geositeurl .dat. Mirrors the server-side `block` outbound, moving the drop to
+// the client (no proxy round-trip). The file keeps its DIRECT whitelist tag
+// untouched — friends consuming only geosite:direct are unaffected.
+var geositeBlockTags = []string{"category-ads-all", "category-ip-geo-detect"}
+
 // geositeRuleSets maps a geosite tag to the rule-set file emitted from it.
 var geositeRuleSets = []struct {
 	tag  string
@@ -131,6 +144,13 @@ func runBuild() {
 	}
 	kirilllavrovFiles = filterOutBasenames(kirilllavrovFiles, kirilllavrovSkip)
 
+	// Loyalsoldier's compiled geosite.dat — downloaded once, reused for the
+	// embedded block tags below and the Shadowrocket rule-sets at the end.
+	if err := download(loyalsoldierGeositeURL, loyalsoldierGeositeDat); err != nil {
+		fmt.Fprintf(os.Stderr, "download geosite.dat: %v\n", err)
+		os.Exit(1)
+	}
+
 	// Build whitedomains.dat
 	allDomainFiles := append([]string{}, domainFiles...)
 	allDomainFiles = append(allDomainFiles, kirilllavrovFiles...)
@@ -143,7 +163,28 @@ func runBuild() {
 	for _, e := range domains {
 		encodedDomains = append(encodedDomains, encodeDomain(e.typ, e.value))
 	}
-	geositeDat := encodeRepeated([][]byte{encodeTagged("DIRECT", encodedDomains)})
+
+	// DIRECT tag = our curated whitelist; plus block-category tags (ads, ip-geo-
+	// detect) copied verbatim from Loyalsoldier so Happ can block them on-device.
+	geositeItems := [][]byte{encodeTagged("DIRECT", encodedDomains)}
+	for _, tag := range geositeBlockTags {
+		entries, err := decodeTaggedDomains(loyalsoldierGeositeDat, tag)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "block tag %s: %v\n", tag, err)
+			os.Exit(1)
+		}
+		if len(entries) == 0 {
+			fmt.Fprintf(os.Stderr, "block tag %s: not found or empty in %s\n", tag, loyalsoldierGeositeDat)
+			os.Exit(1)
+		}
+		var enc [][]byte
+		for _, e := range entries {
+			enc = append(enc, encodeDomain(e.typ, e.value))
+		}
+		geositeItems = append(geositeItems, encodeTagged(strings.ToUpper(tag), enc))
+		fmt.Printf("whitedomains.dat += geosite:%s: %d domains (block)\n", tag, len(entries))
+	}
+	geositeDat := encodeRepeated(geositeItems)
 
 	if err := os.WriteFile(domainDatFile, geositeDat, 0644); err != nil {
 		fmt.Fprintf(os.Stderr, "write whitedomains.dat: %v\n", err)
@@ -197,15 +238,11 @@ func runBuild() {
 	}
 }
 
-// buildGeositeRuleSets downloads Loyalsoldier's compiled geosite.dat once and
-// writes one Shadowrocket-format rule-set per entry in geositeRuleSets.
+// buildGeositeRuleSets writes one Shadowrocket-format rule-set per entry in
+// geositeRuleSets from the geosite.dat already downloaded in runBuild.
 func buildGeositeRuleSets() error {
-	dat := "data/loyalsoldier-geosite.dat"
-	if err := download(loyalsoldierGeositeURL, dat); err != nil {
-		return fmt.Errorf("download geosite.dat: %w", err)
-	}
 	for _, rs := range geositeRuleSets {
-		if err := writeGeositeList(dat, rs.tag, rs.file); err != nil {
+		if err := writeGeositeList(loyalsoldierGeositeDat, rs.tag, rs.file); err != nil {
 			return fmt.Errorf("%s: %w", rs.file, err)
 		}
 	}
@@ -288,7 +325,9 @@ func runCheck(args []string) {
 	allFound := true
 
 	if len(domainQueries) > 0 {
-		entries, err := decodeDomains(domainDatFile)
+		// DIRECT only — whitedomains.dat also carries block tags (category-ads-all,
+		// category-ip-geo-detect); "is this whitelisted?" must ignore those.
+		entries, err := decodeTaggedDomains(domainDatFile, "direct")
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "error: %v\n", err)
 			os.Exit(2)
@@ -474,28 +513,10 @@ func pbIterBytes(buf []byte, targetField int, fn func([]byte)) {
 	}
 }
 
-func decodeDomains(path string) ([]domainEntry, error) {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return nil, err
-	}
-	var entries []domainEntry
-	// GeoSiteList → field 1 repeated GeoSite
-	pbIterBytes(data, 1, func(geosite []byte) {
-		// GeoSite → field 2 repeated Domain
-		pbIterBytes(geosite, 2, func(domain []byte) {
-			typ, value := decodeDomainMsg(domain)
-			if value != "" {
-				entries = append(entries, domainEntry{typ: typ, value: value})
-			}
-		})
-	})
-	return entries, nil
-}
-
-// decodeTaggedDomains decodes a multi-tag geosite .dat (e.g. Loyalsoldier's)
-// and returns the domain entries under the given tag, matched case-insensitively
-// (v2ray stores tags uppercased: "category-ru" → "CATEGORY-RU").
+// decodeTaggedDomains decodes a multi-tag geosite .dat (e.g. Loyalsoldier's, or
+// our own whitedomains.dat) and returns the domain entries under the given tag,
+// matched case-insensitively (v2ray stores tags uppercased: "category-ru" →
+// "CATEGORY-RU").
 func decodeTaggedDomains(path, tag string) ([]domainEntry, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
