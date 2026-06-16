@@ -38,11 +38,17 @@ const loyalsoldierGeositeDat = "data/loyalsoldier-geosite.dat"
 
 // geositeBlockTags are decoded from Loyalsoldier's geosite and embedded as extra
 // tags inside whitedomains.dat, so Happ can block them on-device via BlockSites
-// (geosite:category-ads-all, geosite:category-ip-geo-detect) against the same
-// Geositeurl .dat. Mirrors the server-side `block` outbound, moving the drop to
-// the client (no proxy round-trip). The file keeps its DIRECT whitelist tag
-// untouched — friends consuming only geosite:direct are unaffected.
-var geositeBlockTags = []string{"category-ads-all", "category-ip-geo-detect"}
+// against the same Geositeurl .dat. Mirrors the server-side `block` outbound,
+// moving the drop to the client (no proxy round-trip). The DIRECT whitelist tag
+// stays untouched — friends consuming only geosite:direct are unaffected.
+//
+// NB: category-ads-all (~165k domains) is deliberately NOT here. Happ runs xray
+// inside an iOS Network Extension capped at ~50 MB RAM; building the in-memory
+// matcher for 165k domains blows that budget ("VPN extension memory limit(50mb)
+// exceeded" → NEAgentErrorDomain → tunnel won't start). Ads stay blocked
+// server-side (whitelist mode routes non-whitelisted domains to PROXY, where the
+// server's `block` outbound drops them). Only small tags belong here.
+var geositeBlockTags = []string{"category-ip-geo-detect"}
 
 // geositeRuleSets maps a geosite tag to the rule-set file emitted from it.
 var geositeRuleSets = []struct {
@@ -325,8 +331,8 @@ func runCheck(args []string) {
 	allFound := true
 
 	if len(domainQueries) > 0 {
-		// DIRECT only — whitedomains.dat also carries block tags (category-ads-all,
-		// category-ip-geo-detect); "is this whitelisted?" must ignore those.
+		// DIRECT only — whitedomains.dat also carries block tags (category-ip-geo-
+		// detect); "is this whitelisted?" must ignore those.
 		entries, err := decodeTaggedDomains(domainDatFile, "direct")
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "error: %v\n", err)
