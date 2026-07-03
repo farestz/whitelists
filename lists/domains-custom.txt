@@ -9,6 +9,7 @@ auth-nsdi.ru
 bcs.ru
 broker.ru
 cdn-vk.ru
+cdn.hsmedia.ru
 cikrf.ru
 detmir.ru
 eda.yandex
