@@ -114,6 +114,8 @@ var cidrFiles = []string{
 
 var cidrExcludeFile = "lists/ips-exclude.txt"
 
+var domainExcludeFile = "lists/domains-exclude.txt"
+
 func main() {
 	if len(os.Args) > 1 && os.Args[1] == "check" {
 		runCheck(os.Args[2:])
@@ -165,6 +167,13 @@ func runBuild() {
 		fmt.Fprintf(os.Stderr, "domains: %v\n", err)
 		os.Exit(1)
 	}
+	domainExcludes, err := mergeDomains([]string{domainExcludeFile})
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "exclude domains: %v\n", err)
+		os.Exit(1)
+	}
+	domainsBefore := len(domains)
+	domains = subtractDomains(domains, domainExcludes)
 	var encodedDomains [][]byte
 	for _, e := range domains {
 		encodedDomains = append(encodedDomains, encodeDomain(e.typ, e.value))
@@ -196,7 +205,7 @@ func runBuild() {
 		fmt.Fprintf(os.Stderr, "write whitedomains.dat: %v\n", err)
 		os.Exit(1)
 	}
-	fmt.Printf("whitedomains.dat: %d domains, %d bytes\n", len(domains), len(geositeDat))
+	fmt.Printf("whitedomains.dat: %d domains (%d before exclude of %d), %d bytes\n", len(domains), domainsBefore, len(domainExcludes), len(geositeDat))
 
 	// Shadowrocket twin of whitedomains.dat: same curated RU whitelist as a
 	// policy-less rule-set (the geosite:direct equivalent) for clients that can't
@@ -848,6 +857,35 @@ func mergeDomains(files []string) ([]domainEntry, error) {
 		}
 	}
 	return result, nil
+}
+
+// subtractDomains drops every exclude entry from includes. A domain:-type
+// exclude also drops entries for the excluded host's subdomains (any type
+// except regex) — otherwise a leftover domain:sub.excluded.ru entry would keep
+// matching the excluded traffic.
+func subtractDomains(includes, excludes []domainEntry) []domainEntry {
+	kept := includes[:0:0]
+	for _, e := range includes {
+		if !domainExcluded(e, excludes) {
+			kept = append(kept, e)
+		}
+	}
+	return kept
+}
+
+func domainExcluded(e domainEntry, excludes []domainEntry) bool {
+	v := strings.ToLower(e.value)
+	for _, x := range excludes {
+		xv := strings.ToLower(x.value)
+		if e.typ == x.typ && v == xv {
+			return true
+		}
+		if x.typ == domainTypeDomain && e.typ != domainTypeRegex &&
+			(v == xv || strings.HasSuffix(v, "."+xv)) {
+			return true
+		}
+	}
+	return false
 }
 
 func parseDomainLine(line string) (domainEntry, error) {

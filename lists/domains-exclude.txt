@@ -1,0 +1,10 @@
+# Domains subtracted from the merged whitelist (custom + upstream) so their
+# traffic goes through the proxy. Same format as domains-custom.txt; a bare
+# domain also removes entries for its subdomains.
+# 2026-08-09: Sberbank stopped opening directly — route the whole family via proxy.
+sber.ru
+sberauto.com
+sberbank.ru
+sbermarketing.ru
+sbrf.ru
+sentry.sberauto.com

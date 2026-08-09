@@ -34,7 +34,7 @@ In Shadowrocket / Surge (`[Rule]`):
 - [kirilllavrov/RU-domain-list-for-whitelist](https://github.com/kirilllavrov/RU-domain-list-for-whitelist) — per-service RU domain lists from `domains/ru/` (fetched as tarball at build time)
 - [Loyalsoldier/v2ray-rules-dat](https://github.com/Loyalsoldier/v2ray-rules-dat) — compiled `geosite.dat`; the `CATEGORY-RU` and `YOUTUBE` tags are decoded into `category-ru.list` / `youtube.list` (Shadowrocket/Surge). Independent of the `.dat` build above.
 
-Local additions: [`lists/domains-custom.txt`](lists/domains-custom.txt) (domains), [`lists/ips-custom.txt`](lists/ips-custom.txt), [`lists/ips-exclude.txt`](lists/ips-exclude.txt) — merged on top.
+Local additions: [`lists/domains-custom.txt`](lists/domains-custom.txt) (domains), [`lists/ips-custom.txt`](lists/ips-custom.txt) — merged on top. Local exclusions subtracted from the merged result: [`lists/domains-exclude.txt`](lists/domains-exclude.txt) (domains), [`lists/ips-exclude.txt`](lists/ips-exclude.txt) (CIDRs).
 
 ## Build locally
 

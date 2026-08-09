@@ -58,6 +58,7 @@ Upstream domain source (fetched at build time as tarball):
 Custom (committed to repo):
 
 - `lists/domains-custom.txt` — local domain additions, merged on top of the upstream list
+- `lists/domains-exclude.txt` — domains to subtract from the merged domain whitelist (custom + upstream), for sites that must go through the VPN; a bare domain also removes upstream entries for its subdomains
 - `lists/ips-custom.txt` — extra CIDRs to add, one per line
 - `lists/ips-exclude.txt` — CIDRs to subtract from the merged IP whitelist (for RKN-SNI-blocked sites that must go through the VPN)
 
